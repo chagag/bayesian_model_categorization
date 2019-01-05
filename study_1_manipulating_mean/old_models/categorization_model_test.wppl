@@ -1,0 +1,36 @@
+var opts = {method:'MCMC', samples: 1000, burn: 5}
+
+var Data = json.read("rateExport.JSON")//upload json
+
+
+var distanceModel = function(data_trial){  //this is basically a model that looks at the distance and compare it to the individual
+  // uninformative prior over group beliefs
+  var mean = uniform(100,150) //prior
+  var sd = uniform (1,10)   //prior
+  var belong = flip()           //prior
+
+  // estimate groupmean and sd considering the group
+  mapData({data: data_trial.slice(0,11)}, function(datum){
+    observe(Gaussian({mu: mean, sigma: sd}), datum)
+  })
+
+  // use group dist as true emotion prior if you belong; otherwise uninformative
+  var groupDist = (belong ?
+                      Gaussian({mu: mean, sigma: sd}) :
+                      Uniform({a: 100, b: 150}))
+
+  // data about self
+  //observe(groupDist, data_trial.slice(1))
+  mapData({data: data_trial.slice(12)}, function(datum){
+    observe(groupDist, datum)})
+
+  return (belong)
+  // json.write(belong)
+  // data about self is noisy observation from true emotion prior
+
+}
+
+mapObject(function(trial,data_trial){
+  var posterior = Infer(opts,function(){ distanceModel(data_trial)})
+  return Math.exp(posterior.score(true)) // ==  expectation(posterior)
+},Data)

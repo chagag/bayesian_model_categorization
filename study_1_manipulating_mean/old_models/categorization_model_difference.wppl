@@ -1,0 +1,32 @@
+var data = {self: 1, group : [5,5,6,7,8,9]}
+
+var model = function(){
+  // uninformative prior over group beliefs
+  var groupMean = uniform(0,10) //prior
+  var groupSd = uniform(0,10)   //prior
+  var belong = flip()           //prior
+
+
+  // estimate groupmean and sd considering the group
+  mapData({data: data.group}, function(datum){
+    observe(Gaussian({mu: groupMean, sigma: groupSd}), datum)
+  })
+
+  // use group dist as true emotion prior if you belong; otherwise uninformative
+  var trueEmotionPrior = (belong ?
+                          Gaussian({mu: groupMean, sigma: groupSd}) :
+                          Uniform({a: 0, b: 10}))
+
+  // data about self is noisy observation from true emotion prior
+  var trueEmotion = sample(trueEmotionPrior);
+  condition(trueEmotion < 10 && trueEmotion > 0)
+  observe(Gaussian({mu: trueEmotion, sigma: 1}), data.self)
+
+  // return beliefs about both the group and the self, so we can compare
+  return groupMean
+
+  //return {groupMean, trueEmotion, belong}
+}
+
+var posterior = Infer({method:'MCMC', samples: 1000, lag: 100, burn: 5},model)
+//viz.marginals(posterior)

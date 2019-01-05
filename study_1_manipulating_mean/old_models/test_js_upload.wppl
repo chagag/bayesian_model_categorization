@@ -1,0 +1,3 @@
+var data= json.read("json_files/id_2.json")//upload json
+
+json.write('test-file-copy.json', data);

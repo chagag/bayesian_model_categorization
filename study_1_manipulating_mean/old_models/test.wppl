@@ -1,0 +1,56 @@
+
+// loop function
+var foreach = function(lst, fn) {
+    var foreach_ = function(i) {
+        if (i < lst.length) {
+            fn(lst[i]);
+            foreach_(i + 1);
+        }
+    };
+    foreach_(0);
+};
+
+//model
+var categorizationModel = function(data_trial){  //this is basically a model that looks at the distance and compare it to the individual
+  // uninformative prior over group beliefs
+  var mean = uniform(100,150) //prior
+  var sd = uniform (1,10)   //prior
+  var belong = flip()           //prior
+
+  // estimate groupmean and sd considering the group
+  mapData({data: data_trial.slice(0,11)}, function(datum){
+    observe(Gaussian({mu: mean, sigma: sd}), datum)
+  })
+
+  // use group dist as true emotion prior if you belong; otherwise uninformative
+  var groupDist = (belong ?
+                      Gaussian({mu: mean, sigma: sd}) :
+                      Uniform({a: 100, b: 150}))
+
+  // data about self
+  mapData({data: data_trial.slice(12)}, function(datum){
+    observe(groupDist, datum)})
+
+  return (belong)
+  // data about self is noisy observation from true emotion prior
+
+}
+
+
+//opt
+var opts = {method:'MCMC', samples: 1000, burn: 5}
+
+//list of files in folder
+var files = [2]
+
+
+//loop through the files
+foreach(files, function(id_number){
+  var Data = json.read("input_json_files/id_"+id_number+".json")//upload json
+  var belong = mapObject(function(trial,data_trial){
+    var posterior = Infer(opts,function(){ categorizationModel(data_trial)})
+    return Math.exp(posterior.score(true)) // ==  expectation(posterior)
+  },Data)
+  json.write("model_output_json/output_"+id_number+".json", belong)
+
+})

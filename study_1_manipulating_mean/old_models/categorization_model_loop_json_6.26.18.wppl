@@ -1,0 +1,83 @@
+
+// loop function
+var foreach = function(lst, fn) {
+    var foreach_ = function(i) {
+        if (i < lst.length) {
+            fn(lst[i]);
+            foreach_(i + 1);
+        }
+    };
+    foreach_(0);
+};
+
+//var files = [2,3,4,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32]
+var files = [2]
+
+// get all the data of list of lists/////////////////////////
+var allData = _.fromPairs(map(function(id_number){
+  var Data = json.read("input_json_files/id_"+id_number+".json")//upload json
+  return [id_number, Data]
+}, files))
+
+
+// cognitive model//////////////////////////////////////
+var categorizationModel = cache(function(data_trial, belongPrior){  // cache is designed to reduce opertaing time by re-referencing to the data that has already been run if the trials are the same
+  return Infer({method:"enumerate", model: function(){ //enumarate can be used here due to the descrete variales
+    var mean = uniformDraw(_.range(100, 150, 2)) //prior descrete
+    var sd = 10// uniformDraw(_.range(1, 10))   //prior descrete
+    var belong = flip(belongPrior)           //prior belongprior is a varible that will be fitted using observe
+
+    // estimate groupmean and sd considering the group
+    mapData({data: data_trial.slice(0,11)}, function(datum){ //look at the group responses
+      observe(Gaussian({mu: mean, sigma: sd}), datum)
+    })
+
+    // use group dist as true emotion prior if you belong; otherwise uninformative
+    var groupDist = (belong ?
+                        Gaussian({mu: mean, sigma: sd}) :
+                        Uniform({a: 100, b: 150}))
+
+    // data about self
+    mapData({data: data_trial.slice(12)}, function(datum){
+      observe(groupDist, datum)})
+
+    return (belong ? 1 : 0) // convert belong into 0 or 1
+    // data about self is noisy observation from true emotion prior
+  }})
+}, 10000)
+
+
+////////////////////////////////////////////////////
+//bda model - fitting the parameter of belonging based on the data AND producing the groupChoise estimation
+var bdaModel = function(){
+  var belongPrior = uniform(0, 1) //prior of belong
+  var allPredictions = mapObject(function(subj_id, subj_data){ // loop over subjects
+  //  display("subj id = " + subj_id)
+    var subjPredictions = mapObject(function(trial_id, trial_data){ // loop over trials
+      var response = trial_data[trial_data.length - 1] // double check indexing - take the groupChoice
+
+      // var cognitiveModelPredictions = categorizationModel(trial_data, belongPrior)
+      var cognitiveModelPredictions = categorizationModel(trial_data.slice(0, trial_data.length - 2), belongPrior) // parce the data for the categorizatio model
+
+      observe(cognitiveModelPredictions, response) //cognitiveModelPredictions is the probabiity of belong whereas response is a true or falst statement
+
+      return [Math.exp(cognitiveModelPredictions.score(1)),response] // single trial prediction
+    }, subj_data)
+
+    return subjPredictions // single subject predictions
+
+  }, allData)
+  return extend({belongPrior}, {allPredictions})
+}
+
+//opt
+
+var n_samples = 100
+display("running bda model...")
+var fullPosterior = Infer({model: bdaModel, method: "MCMC", samples: n_samples, burn: n_samples / 2,
+verbose: true})
+
+
+//fullPosterior // use this if you wanted to
+//write the oucome
+json.write("model_output_json/output.json", fullPosterior)

@@ -1,0 +1,51 @@
+var opts = {method:'MCMC', samples: 1000, lag: 100, burn: 5}
+var data = [2,2,2,4,2,2]  // represents the distance from the individual
+
+
+
+var model=function(){  //this is basically a model that looks at the distance and compare it to the individual
+  // uninformative prior over group beliefs
+  var meanDistance = uniform(0,10) //prior
+  var sdDistance = uniform(0,10)   //prior
+  var belong = flip()           //prior
+  // estimate groupmean and sd considering the group
+  mapData({data: data
+          }, function(datum){
+    observe(Gaussian({mu: meanDistance, sigma: sdDistance}), datum)
+  })
+  // use group dist as true emotion prior if you belong; otherwise uninformative
+  var groupDist = (belong ?
+                          Gaussian({mu: meanDistance, sigma: sdDistance}) :
+                          Uniform({a: 0, b: 10}))
+   observe(groupDist, 0)
+   return (belong)
+}
+
+var distanceModel = Infer(opts,model)
+
+print('probability of belong: ' + expectation(distanceModel))
+viz(distanceModel)
+
+
+print("generating skeptical model predictions") //this is just a flip of a coin
+var skepticalModel =  Infer(opts, function(){
+  var belong = flip(0.5)
+  return (belong)
+})
+
+viz(skepticalModel)
+
+
+// package the models up in an Object (for ease of reference)
+var modelObject = {distanceModel: distanceModel,skepticalModel: skepticalModel};
+var belonging_data = [true,false]
+var scientistModel = function(){
+  var theBetterModel_name = flip(0.5) ? "distanceModel" : "skepticalModel"
+  var theBetterModel = modelObject[theBetterModel_name]
+  map(function(d){ observe(theBetterModel, d) },belonging_data)
+  return {betterModel: theBetterModel_name}
+}
+
+var modelPosterior = Infer({method: "enumerate"}, scientistModel)
+
+viz(modelPosterior)

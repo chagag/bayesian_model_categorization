@@ -1,0 +1,254 @@
+---
+title: "belonging"
+output: html_notebook
+---
+insights regarding the model
+1. Increasing the range of variance (prior) reduces the difference between the conditions
+2. 
+
+#setup
+```{r, include=FALSE,echo=FALSE}
+
+rm(list = ls())
+
+library(Rmisc);library(tidyverse); library(lme4); library(lmerTest);library(jsonlite)
+
+d = read_csv("categorization_study1.csv")
+d= d[,c(2:26)]
+d =d %>% select (trial, id,meanGroup,groupChoice,rating,image, condition )
+
+#change path to get the json files
+path <- 'model_output_json/'
+files <- dir(path, pattern = "*.json")
+
+##get the json file 
+j <- fromJSON(file.path(path, files),
+              simplifyVector = TRUE, 
+              flatten = T)
+#transform into a dataset
+j=as.data.frame(j[2])
+
+
+#get a dataset that has the model prediction 
+j = j %>%
+  select (-support.belongPrior)%>%
+  gather(.)%>%
+  separate(key , into=c("support","id","trial"),sep = '\\.') %>%
+  group_by(id,trial)%>%
+  summarize (modelChoice = mean (value))
+
+#convert the variable
+j$id = as.integer(d$id)
+j$trial=as.integer(j$trial) 
+#j$modelChoice = as.integer(j$modelChoice)
+
+# add the json files to d 
+d =left_join(d,j, by=c("id","trial"))
+
+#create a binary file - when importing multiplefiles
+d$modelBinary = ifelse (d$modelChoice>=.50,1,0)
+d$condition_bi = ifelse(d$condition == "same", "same","dif")
+
+rm(j,files, path)
+
+
+
+
+```
+
+
+Explore model choice 
+```{r}
+ggplot(data=d, aes(modelChoice,fill=condition_bi)) +
+  geom_histogram()
+
+
+
+r= lmer (modelChoice ~ condition_bi + (1|id),d);summary (r)
+
+```
+
+
+
+
+#complet
+```{r data value by condition}
+
+
+ggplot(data=d, aes(condition_bi,fill=groupChoice)) +
+  geom_histogram()
+
+
+c = d %>%
+  group_by(condition_bi) %>%
+  summarize (parChoice = mean(groupChoice),
+             modelChoice= mean(modelChoice));c
+
+c = d %>%
+  group_by(condition_bi) %>%
+  summarize (mean = mean(modelChoice));m
+
+
+```
+
+```{r summary by individual - by condition}
+
+indivSummary = d %>%
+  group_by(id,condition_bi)%>%
+  count(countLines= (groupChoice==1))%>%
+  mutate(sumObserve =sum(n),
+         parChoice=n/sumObserve)%>%
+  filter(countLines ==1)%>%
+  select(id,condition_bi,parChoice)
+
+modelChoice=
+  aggregate(d$modelChoice, by=list(id=d$id,condition_bi=d$condition_bi), FUN=mean)%>%
+  rename(modelChoice=x)
+
+indivSummary =left_join(indivSummary,modelChoice, by=c("id", "condition_bi"))
+
+# Same, but with different colors and add regression lines
+ggplot(indivSummary, aes(x=modelChoice, y=parChoice, color=condition_bi)) +
+    geom_point(shape=1) +
+    scale_colour_hue(l=50) +
+  geom_smooth(method=lm,   # Add linear regression lines
+                se=FALSE)+# Use a slightly darker palette than normal
+    facet_wrap(~condition_bi, scales="free")
+
+```
+
+
+
+```{r correlation  per participant}
+
+
+cort= d%>%
+  group_by(id)%>%
+  do(r =cor.test(.$modelChoice,.$groupChoice))%>%
+  mutate(value = r$estimate)%>%
+  select(-r)
+
+ggplot(data=cort, aes(value)) +
+  geom_histogram() 
+
+mean (cort$value, na.rm = T)
+
+```
+
+
+
+
+```{r}
+d %>%
+  count (condition_bi,groupChoice)%>%
+  mutate (prop.table(n))
+
+
+
+```
+
+```{r}
+d %>%
+  count (condition_bi,modelBinary)%>%
+  mutate (prop.table(n))
+```
+
+
+```{r}
+r =glmer (groupChoice ~ modelChoice +(1|id), d);summary (r)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r test that the model works well}
+
+
+path <- 'C:/Users/chaga/Google Drive/research/categorization_belonging/study_1_categorization_manipulating_mean/model/input_json_files/'
+files <- dir(path, pattern = "*.json")
+
+
+
+files = files[11] #choose id 2
+
+
+j <- files %>%
+  map_df(~fromJSON(file.path(path, .), flatten = TRUE))%>%
+  mutate(id = seq(1,13),
+         ident = ifelse (id<=12, "agent", "part"))%>%
+  select (-id)%>%
+  gather(trial, modelValue,-ident)%>%
+  slice (1:117)
+
+
+
+ggplot(data=j, aes(modelValue,fill=ident)) +
+  facet_wrap(~trial)+
+  geom_histogram()
+
+
+```
+
+
+
+
+
+```{r}
+r = glmer (modelBinary ~ condition_bi+(1|id),family =binomial,d);summary(r)
+
+
+
+```
+
+
+
+
+
+#### model - generate files (don't need this)
+
+We first need to transform each participants into a list of lists. 
+
+```{r generate json files -only use once}
+
+library(jsonlite)
+
+d = read_csv("categorization_study1.csv")
+
+d$zgroupChoice = d$groupChoice #I am just modifying this variable name so that it would be at the end. 
+
+files = d%>%
+  select (id, starts_with("par"), -partUSText, -partUS ,trial,rating,zgroupChoice) %>%
+  group_by(id)%>%
+  gather (par, agentRating,-trial,-id)  %>%
+  spread(trial, agentRating)%>%
+  arrange(id,par)%>%
+  select( -par)
+
+list_id = unique(files$id)
+  
+for (i in list_id){
+  print (i)
+  df = subset (files,id ==i)
+  df$id = NULL
+  df = as.list(df)
+  df =toJSON(df, pretty = TRUE)
+  write(df, sprintf('C:/Users/chaga/Google Drive/research/categorization_belonging/study_1_categorization_manipulating_mean/model/input_json_files/id_%d.json', i))
+}
+
+
+```
