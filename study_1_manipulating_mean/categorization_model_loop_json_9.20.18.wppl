@@ -6,6 +6,7 @@ var foreach = function(lst, fn) {
             fn(lst[i]);
             foreach_(i + 1);
         }
+        //test
     };
     foreach_(0);
 };
