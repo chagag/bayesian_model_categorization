@@ -84,10 +84,6 @@ c = d %>%
   summarize (parChoice = mean(groupChoice),
              modelChoice= mean(modelChoice));c
 
-c = d %>%
-  group_by(condition_bi) %>%
-  summarize (mean = mean(modelChoice));m
-
 
 ```
 
